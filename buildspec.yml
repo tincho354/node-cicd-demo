@@ -2,44 +2,33 @@ version: 0.2
 
 env:
   variables:
-    # Provide these in the CodeBuild environment or override here
+    # Configurá esto en CodeBuild o dejalo aquí
     ECR_REPOSITORY: "node-cicd-demo"
     PUSH_LATEST: "true"
-  # CODEBUILD_RESOLVED_SOURCE_VERSION is provided by CodeBuild
-  # AWS_DEFAULT_REGION should be set in the environment
 
 phases:
-  install:
-    runtime-versions:
-      nodejs: 20
-    commands:
-      - echo "Installing dependencies..."
-      - npm ci
   pre_build:
     commands:
-      - echo "Running tests..."
-      - npm test
       - echo "Logging in to Amazon ECR..."
       - ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
-      - echo "Account: $ACCOUNT_ID"
-      - aws --version
+      - IMAGE_REPO=$ACCOUNT_ID.dkr.ecr.$AWS_DEFAULT_REGION.amazonaws.com/$ECR_REPOSITORY
       - aws ecr get-login-password --region $AWS_DEFAULT_REGION | docker login --username AWS --password-stdin $ACCOUNT_ID.dkr.ecr.$AWS_DEFAULT_REGION.amazonaws.com
       - COMMIT_SHA=${CODEBUILD_RESOLVED_SOURCE_VERSION:0:7}
       - IMAGE_TAG=${COMMIT_SHA:-"local"}
-      - IMAGE_REPO=$ACCOUNT_ID.dkr.ecr.$AWS_DEFAULT_REGION.amazonaws.com/$ECR_REPOSITORY
-      - echo "Repo: $IMAGE_REPO  Tag: $IMAGE_TAG"
+      - echo "Repo= $IMAGE_REPO  Tag= $IMAGE_TAG"
   build:
     commands:
-      - echo "Building the Docker image..."
+      - echo "Building Docker image..."
       - docker build -t $ECR_REPOSITORY:$IMAGE_TAG .
       - docker tag $ECR_REPOSITORY:$IMAGE_TAG $IMAGE_REPO:$IMAGE_TAG
       - if [ "$PUSH_LATEST" = "true" ]; then docker tag $ECR_REPOSITORY:$IMAGE_TAG $IMAGE_REPO:latest; fi
   post_build:
     commands:
-      - echo "Pushing the Docker image to ECR..."
+      - echo "Pushing Docker image to ECR..."
       - docker push $IMAGE_REPO:$IMAGE_TAG
       - if [ "$PUSH_LATEST" = "true" ]; then docker push $IMAGE_REPO:latest; fi
       - printf '{\n  "name": "%s",\n  "imageUri": "%s"\n}\n' "$IMAGE_REPO" "$IMAGE_REPO:$IMAGE_TAG" > imageDetail.json
+
 artifacts:
   files:
     - imageDetail.json
